@@ -1,0 +1,18 @@
+[package]
+name = "sac"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["play"]
+play = ["dep:cpal"]
+
+[dependencies]
+rustfft = "6"
+symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "flac", "ogg", "vorbis", "wav", "pcm"] }
+cpal = { version = "0.15", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

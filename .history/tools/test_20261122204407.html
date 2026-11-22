@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Twiin Mail Tester</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e8eaf0; --mut:#8b92a5; --acc:#7c5cff; --ok:#3ecf8e; --bad:#ff5c6c; --warn:#f5b942; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.5 system-ui,sans-serif; padding:16px; }
+  .wrap { max-width:560px; margin:0 auto; display:grid; gap:14px; }
+  h1 { font-size:20px; margin:0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; display:grid; gap:10px; }
+  label { font-size:12px; color:var(--mut); display:grid; gap:4px; }
+  input, textarea { width:100%; background:#10131a; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; }
+  textarea { min-height:130px; resize:vertical; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:12px 14px; font:inherit; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  pre { margin:0; background:#0b0d12; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; max-height:260px; font-size:12px; white-space:pre-wrap; word-break:break-word; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; margin-right:4px; }
+  .ok { background:rgba(62,207,142,.15); color:var(--ok); }
+  .bad { background:rgba(255,92,108,.15); color:var(--bad); }
+  .warn { background:rgba(245,185,66,.15); color:var(--warn); }
+  small { color:var(--mut); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Twiin Mail Tester</h1>
+
+  <div class="card">
+    <label>Server endpoint URL
+      <input id="url" placeholder="https://your-project.vercel.app/api/send" autocomplete="off" inputmode="url">
+    </label>
+  </div>
+
+  <div class="card">
+    <label>To (separate several with commas)
+      <input id="to" type="text" placeholder="someone@example.com" autocomplete="off" inputmode="email">
+    </label>
+    <label>Subject
+      <input id="subject" value="Twiin test email">
+    </label>
+    <label>Message (HTML allowed)
+      <textarea id="html">&lt;h2&gt;Hello from Twiin&lt;/h2&gt;&lt;p&gt;This is a test email.&lt;/p&gt;</textarea>
+    </label>
+    <button id="send">Send</button>
+  </div>
+
+  <div class="card">
+    <div id="summary"><small>Nothing sent yet.</small></div>
+    <pre id="out" hidden></pre>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const get = (k) => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
+const set = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const pill = (t, c) => `<span class="pill ${c}">${t}</span>`;
+
+let saved = get('twiin_url');
+if (!saved || saved.endsWith('localhost:3000') || saved.endsWith('localhost:3000/')) {
+  saved = window.location.origin.startsWith('http') ? `${window.location.origin}/api/send` : '';
+}
+$('url').value = saved;
+$('url').addEventListener('change', () => set('twiin_url', $('url').value.trim()));
+
+$('send').onclick = async () => {
+  let url = $('url').value.trim();
+  if (url && !url.includes('/api/')) {
+    url = url.replace(/\/+$/, '') + '/api/send';
+    $('url').value = url;
+  }
+  const recipients = $('to').value.split(/[,\n;]+/).map((s) => s.trim()).filter(Boolean);
+  if (!url) return ($('summary').innerHTML = pill('Enter the endpoint URL', 'bad'));
+  if (!recipients.length) return ($('summary').innerHTML = pill('Enter an email', 'bad'));
+  set('twiin_url', url);
+
+  const base = { subject: $('subject').value, html: $('html').value };
+  const payload = recipients.length === 1
+    ? { ...base, to: recipients[0] }
+    : { messages: recipients.map((to) => ({ ...base, to })) };
+
+  $('send').disabled = true;
+  $('summary').textContent = 'Sending...';
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const j = await r.json();
+    const ms = Math.round(performance.now() - t0);
+    $('out').hidden = false;
+    $('out').textContent = JSON.stringify(j, null, 2);
+    if (r.ok && j.total !== undefined) {
+      $('summary').innerHTML =
+        pill(`${j.sent} sent`, j.sent ? 'ok' : 'warn') +
+        (j.pending ? pill(`${j.pending} queued`, 'warn') : '') +
+        (j.failed ? pill(`${j.failed} failed`, 'bad') : '') +
+        (j.rejected ? pill(`${j.rejected} rejected`, 'bad') : '') +
+        `<small> ${ms} ms</small>`;
+    } else {
+      $('summary').innerHTML = pill(`${r.status}: ${j.error || 'error'}`, 'bad') + (j.remaining !== undefined ? `<small> ${j.remaining} left today</small>` : '');
+    }
+  } catch (e) {
+    $('summary').innerHTML = pill('Request failed: ' + e.message, 'bad');
+  } finally {
+    $('send').disabled = false;
+  }
+};
+</script>
+</body>
+</html>
